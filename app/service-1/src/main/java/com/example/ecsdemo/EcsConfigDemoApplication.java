@@ -27,43 +27,56 @@ public class EcsConfigDemoApplication {
 @RestController
 class ConfigController {
 
-    @Value("${app.name:ecs-config-demo}")
-    private String appName;
-
-    @Value("${app.environment:local}")
-    private String environment;
-
-    @Value("${app.version:1.0.0}")
-    private String version;
-
-    @Value("${app.feature.flag:false}")
-    private String featureFlag;
-
-    @Value("${app.config.source:properties-file}")
-    private String configSource;
-
+    private final org.springframework.core.env.Environment env;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final SsmConfigService ssmConfigService;
 
-    public ConfigController(HttpClient httpClient, ObjectMapper objectMapper) {
+    public ConfigController(org.springframework.core.env.Environment env,
+                            HttpClient httpClient,
+                            ObjectMapper objectMapper,
+                            SsmConfigService ssmConfigService) {
+        this.env = env;
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
+        this.ssmConfigService = ssmConfigService;
     }
 
     @GetMapping("/api/config")
     public Map<String, Object> getConfig() {
         Map<String, Object> response = new HashMap<>();
 
-        // Application configuration
-        Map<String, String> appConfig = new HashMap<>();
-        appConfig.put("name", appName);
-        appConfig.put("environment", environment);
-        appConfig.put("version", version);
-        appConfig.put("featureFlag", featureFlag);
-        appConfig.put("configSource", configSource);
+        // Application configuration - read from Environment for live updates
+        Map<String, Object> appConfig = new HashMap<>();
+        appConfig.put("name", env.getProperty("app.name", "ecs-config-demo"));
+        appConfig.put("environment", env.getProperty("app.environment", "local"));
+        appConfig.put("version", env.getProperty("app.version", "1.0.0"));
+        appConfig.put("featureFlag", env.getProperty("app.feature.flag", "false"));
+        appConfig.put("configSource", env.getProperty("app.config.source", "properties-file"));
+
+        // Add refresh metadata
+        if (ssmConfigService.getLastRefreshTime() != null) {
+            appConfig.put("lastSsmRefresh", ssmConfigService.getLastRefreshTime().toString());
+            appConfig.put("ssmParameterCount", ssmConfigService.getLastParameterCount());
+        }
 
         response.put("application", appConfig);
         response.put("ecsMetadata", getEcsMetadata());
+
+        return response;
+    }
+
+    @org.springframework.web.bind.annotation.PostMapping("/api/config/refresh")
+    public Map<String, Object> refreshConfig() {
+        SsmConfigService.RefreshResult result = ssmConfigService.refresh();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", result.success());
+        response.put("message", result.message());
+        response.put("parameterCount", result.parameterCount());
+        if (result.refreshTime() != null) {
+            response.put("refreshTime", result.refreshTime().toString());
+        }
 
         return response;
     }
@@ -72,8 +85,8 @@ class ConfigController {
     public Map<String, String> health() {
         Map<String, String> health = new HashMap<>();
         health.put("status", "UP");
-        health.put("application", appName);
-        health.put("environment", environment);
+        health.put("application", env.getProperty("app.name", "ecs-config-demo"));
+        health.put("environment", env.getProperty("app.environment", "local"));
         return health;
     }
 
