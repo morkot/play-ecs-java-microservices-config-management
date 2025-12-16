@@ -36,12 +36,11 @@ public class SsmPropertySourceLoader implements ApplicationListener<ApplicationE
         }
 
         String parameterPath = environment.getProperty("app.config.ssm.path", "/ecs-config-demo/");
-        String region = environment.getProperty("aws.region", "us-east-1");
 
         System.out.println("Loading configuration from SSM Parameter Store: " + parameterPath);
 
         try {
-            Map<String, Object> ssmProperties = loadFromSsm(parameterPath, region);
+            Map<String, Object> ssmProperties = loadFromSsm(parameterPath);
             MapPropertySource propertySource = new MapPropertySource(SSM_PROPERTY_SOURCE_NAME, ssmProperties);
             environment.getPropertySources().addFirst(propertySource);
 
@@ -52,12 +51,11 @@ public class SsmPropertySourceLoader implements ApplicationListener<ApplicationE
         }
     }
 
-    private Map<String, Object> loadFromSsm(String path, String region) {
+    private Map<String, Object> loadFromSsm(String path) {
         Map<String, Object> properties = new HashMap<>();
 
-        try (SsmClient ssmClient = SsmClient.builder()
-                .region(Region.of(region))
-                .build()) {
+        // SDK auto-detects region from AWS_REGION env var (set by ECS) or instance metadata
+        try (SsmClient ssmClient = SsmClient.builder().build()) {
 
             String nextToken = null;
 

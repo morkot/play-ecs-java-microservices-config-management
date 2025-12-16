@@ -57,7 +57,7 @@ output "alb_endpoint" {
 output "test_urls" {
   description = "URLs to test the services"
   value = {
-    properties = "http://${aws_lb.main.dns_name}/properties/api/config"
-    ssm        = "http://${aws_lb.main.dns_name}/ssm/api/config"
+    properties = "http://${aws_lb.main.dns_name}/api/config"
+    ssm        = "http://${aws_lb.main.dns_name}/api/ssm"
   }
 }

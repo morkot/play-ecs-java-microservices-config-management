@@ -138,7 +138,7 @@ resource "aws_lb_listener_rule" "properties" {
 
   condition {
     path_pattern {
-      values = ["/properties/*"]
+      values = ["/api/*"]
     }
   }
 
@@ -147,23 +147,23 @@ resource "aws_lb_listener_rule" "properties" {
   }
 }
 
-# ALB Listener Rule for SSM Service
-resource "aws_lb_listener_rule" "ssm" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 200
+# # ALB Listener Rule for SSM Service
+# resource "aws_lb_listener_rule" "ssm" {
+#   listener_arn = aws_lb_listener.http.arn
+#   priority     = 200
 
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.ssm.arn
-  }
+#   action {
+#     type             = "forward"
+#     target_group_arn = aws_lb_target_group.ssm.arn
+#   }
 
-  condition {
-    path_pattern {
-      values = ["/ssm/*"]
-    }
-  }
+#   condition {
+#     path_pattern {
+#       values = ["/ssm/*"]
+#     }
+#   }
 
-  tags = {
-    Name = "${var.project_name}-ssm-rule"
-  }
-}
+#   tags = {
+#     Name = "${var.project_name}-ssm-rule"
+#   }
+# }
