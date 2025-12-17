@@ -3,6 +3,8 @@ Everything to build and play with centralaised configuration management in ecs a
 
 ## Prepare and deploy
 
+### Build app and docker image
+
 ```shell
 cd app/ service-1
 mvn clean package -DskipTests
@@ -19,8 +21,7 @@ aws ssm put-parameter \
 curl -X POST http://ecs-config-demo-alb-136450583.eu-west-1.elb.amazonaws.com/api/config/refresh
 ```
 
-
-
+About ssm maping to properties:
 ```
 Your app config (application.properties):
   app.config.ssm.path=/ecs-config-demo/
@@ -35,32 +36,35 @@ Your app config (application.properties):
   The code strips the prefix (/ecs-config-demo/) and converts / to .
 ```
 
+### Deploy platform, services and `lambda-config-refresher`
 
+```shell
+cd infra/platform
+terraform init && terraform apply
 
+cd infra/service-1
+terraform init && terraform apply
 
+cd infra/lambda-config-refresher
+terraform init && terraform apply
+```
 
-## Demo Flow
+## Demo
 
-  ### 1. Check current config
+1. Get service URL
 
-  curl http://ecs-config-demo-alb-136450583.eu-west-1.elb.amazonaws.com/api/config
+```shell
+cd infra/platform
+terraform output
+```
 
-  ### 2. Update a parameter in AWS SSM (e.g., via console or CLI)
+2. Demonstrate properties via broser or via curl by going to test_urls.properties
+3. Demonstrate automated refresh:
 
-  aws ssm put-parameter --name "/ecs-config-demo/app/feature/flag" --value "true" --overwrite
+```shell
+while true; do curl -s http://ecs-config-demo-alb-1058709648.eu-west-1.elb.amazonaws.com/api/config | jq '.application.featureFlag'; sleep 1; done
+```
 
-  ### 3. Trigger hot reload (no restart needed!)
+Go to SSM parameter store and change value of `/ecs-config-demo/app/feature/flag`
 
-  curl -X POST http://ecs-config-demo-alb-136450583.eu-west-1.elb.amazonaws.com/api/config/refresh
-
-  ### 4. Verify new config is active
-
-  curl http://ecs-config-demo-alb-136450583.eu-west-1.elb.amazonaws.com/api/config
-
-  The refresh response will look like:
-  {
-    "success": true,
-    "message": "Configuration refreshed from SSM",
-    "parameterCount": 5,
-    "refreshTime": "2025-12-16T10:30:00Z"
-  }
+Switch back to terminal and see new value appear after few seconds.

@@ -61,3 +61,8 @@ output "test_urls" {
     ssm        = "http://${aws_lb.main.dns_name}/api/ssm"
   }
 }
+
+output "alb_endpoint_ssm_parameter" {
+  description = "SSM parameter name containing ALB endpoint"
+  value       = aws_ssm_parameter.alb_endpoint.name
+}

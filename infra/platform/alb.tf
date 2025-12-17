@@ -167,3 +167,16 @@ resource "aws_lb_listener_rule" "properties" {
 #     Name = "${var.project_name}-ssm-rule"
 #   }
 # }
+
+# SSM Parameter to store ALB endpoint for use by other modules
+resource "aws_ssm_parameter" "alb_endpoint" {
+  name        = "/${var.project_name}/platform/alb-endpoint"
+  description = "ALB endpoint URL for the ECS config demo"
+  type        = "String"
+  value       = "http://${aws_lb.main.dns_name}"
+
+  tags = {
+    Name        = "${var.project_name}-alb-endpoint"
+    Environment = var.environment
+  }
+}
