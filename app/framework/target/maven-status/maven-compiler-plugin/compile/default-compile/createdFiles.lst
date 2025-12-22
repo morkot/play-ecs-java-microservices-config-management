@@ -1,0 +1,6 @@
+com/example/framework/ssm/SsmConfigService$RefreshResult.class
+com/example/framework/ssm/SsmParameterLoader.class
+com/example/framework/ssm/SsmConfigService.class
+com/example/framework/ecs/EcsMetadataService.class
+com/example/framework/config/FrameworkAutoConfiguration.class
+com/example/framework/ssm/SsmPropertySourceLoader.class

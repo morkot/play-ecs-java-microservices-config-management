@@ -1,0 +1,5 @@
+/Users/Andrii_Melekhovskiy/Dev/github/play-ecs-java-microservices-config-management/app/framework/src/main/java/com/example/framework/ssm/SsmConfigService.java
+/Users/Andrii_Melekhovskiy/Dev/github/play-ecs-java-microservices-config-management/app/framework/src/main/java/com/example/framework/ssm/SsmParameterLoader.java
+/Users/Andrii_Melekhovskiy/Dev/github/play-ecs-java-microservices-config-management/app/framework/src/main/java/com/example/framework/ecs/EcsMetadataService.java
+/Users/Andrii_Melekhovskiy/Dev/github/play-ecs-java-microservices-config-management/app/framework/src/main/java/com/example/framework/ssm/SsmPropertySourceLoader.java
+/Users/Andrii_Melekhovskiy/Dev/github/play-ecs-java-microservices-config-management/app/framework/src/main/java/com/example/framework/config/FrameworkAutoConfiguration.java
