@@ -1,5 +1,2 @@
-org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-com.example.framework.config.FrameworkAutoConfiguration
-
 org.springframework.context.ApplicationListener=\
 com.example.framework.ssm.SsmPropertySourceLoader

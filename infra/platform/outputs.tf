@@ -29,14 +29,14 @@ output "alb_zone_id" {
   value       = aws_lb.main.zone_id
 }
 
-output "properties_target_group_arn" {
-  description = "Properties target group ARN"
-  value       = aws_lb_target_group.properties.arn
+output "service1_target_group_arn" {
+  description = "Service 1 target group ARN"
+  value       = aws_lb_target_group.service1.arn
 }
 
-output "ssm_target_group_arn" {
-  description = "SSM target group ARN"
-  value       = aws_lb_target_group.ssm.arn
+output "service2_target_group_arn" {
+  description = "Service 2 target group ARN"
+  value       = aws_lb_target_group.service2.arn
 }
 
 output "cluster_name" {
@@ -57,8 +57,8 @@ output "alb_endpoint" {
 output "test_urls" {
   description = "URLs to test the services"
   value = {
-    properties = "http://${aws_lb.main.dns_name}/api/config"
-    ssm        = "http://${aws_lb.main.dns_name}/api/ssm"
+    service1 = "http://${aws_lb.main.dns_name}/service-1/api/config"
+    service2 = "http://${aws_lb.main.dns_name}/service-2/api/config"
   }
 }
 

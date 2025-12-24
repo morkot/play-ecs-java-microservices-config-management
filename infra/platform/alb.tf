@@ -50,10 +50,10 @@ resource "aws_lb" "main" {
   }
 }
 
-# Target Group for Properties Service
-resource "aws_lb_target_group" "properties" {
-  name        = "${var.project_name}-props-tg"
-  port        = var.container_port
+# Target Group for Service 1
+resource "aws_lb_target_group" "service1" {
+  name        = "${var.project_name}-svc1-tg"
+  port        = 8080
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
@@ -63,7 +63,7 @@ resource "aws_lb_target_group" "properties" {
     healthy_threshold   = 2
     interval            = 30
     matcher             = "200"
-    path                = "/api/health"
+    path                = "/service-1/api/health"
     port                = "traffic-port"
     protocol            = "HTTP"
     timeout             = 5
@@ -73,15 +73,15 @@ resource "aws_lb_target_group" "properties" {
   deregistration_delay = 30
 
   tags = {
-    Name        = "${var.project_name}-props-tg"
+    Name        = "${var.project_name}-svc1-tg"
     Environment = var.environment
   }
 }
 
-# Target Group for SSM Service
-resource "aws_lb_target_group" "ssm" {
-  name        = "${var.project_name}-ssm-tg"
-  port        = var.container_port
+# Target Group for Service 2
+resource "aws_lb_target_group" "service2" {
+  name        = "${var.project_name}-svc2-tg"
+  port        = 8081
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
@@ -91,7 +91,7 @@ resource "aws_lb_target_group" "ssm" {
     healthy_threshold   = 2
     interval            = 30
     matcher             = "200"
-    path                = "/api/health"
+    path                = "/service-2/api/health"
     port                = "traffic-port"
     protocol            = "HTTP"
     timeout             = 5
@@ -101,7 +101,7 @@ resource "aws_lb_target_group" "ssm" {
   deregistration_delay = 30
 
   tags = {
-    Name        = "${var.project_name}-ssm-tg"
+    Name        = "${var.project_name}-svc2-tg"
     Environment = var.environment
   }
 }
@@ -126,47 +126,47 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# ALB Listener Rule for Properties Service
-resource "aws_lb_listener_rule" "properties" {
+# ALB Listener Rule for Service 1 (path-based routing)
+resource "aws_lb_listener_rule" "service1" {
   listener_arn = aws_lb_listener.http.arn
   priority     = 100
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.properties.arn
+    target_group_arn = aws_lb_target_group.service1.arn
   }
 
   condition {
     path_pattern {
-      values = ["/api/*"]
+      values = ["/service-1/*"]
     }
   }
 
   tags = {
-    Name = "${var.project_name}-props-rule"
+    Name = "${var.project_name}-svc1-rule"
   }
 }
 
-# # ALB Listener Rule for SSM Service
-# resource "aws_lb_listener_rule" "ssm" {
-#   listener_arn = aws_lb_listener.http.arn
-#   priority     = 200
+# ALB Listener Rule for Service 2 (path-based routing)
+resource "aws_lb_listener_rule" "service2" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 50
 
-#   action {
-#     type             = "forward"
-#     target_group_arn = aws_lb_target_group.ssm.arn
-#   }
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.service2.arn
+  }
 
-#   condition {
-#     path_pattern {
-#       values = ["/ssm/*"]
-#     }
-#   }
+  condition {
+    path_pattern {
+      values = ["/service-2/*"]
+    }
+  }
 
-#   tags = {
-#     Name = "${var.project_name}-ssm-rule"
-#   }
-# }
+  tags = {
+    Name = "${var.project_name}-svc2-rule"
+  }
+}
 
 # SSM Parameter to store ALB endpoint for use by other modules
 resource "aws_ssm_parameter" "alb_endpoint" {

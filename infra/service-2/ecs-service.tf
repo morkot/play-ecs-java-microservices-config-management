@@ -43,7 +43,7 @@ resource "aws_ecs_task_definition" "service" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:${var.container_port}/service-1/api/health || exit 1"]
+        command     = ["CMD-SHELL", "curl -f http://localhost:${var.container_port}/service-2/api/health || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
@@ -73,7 +73,7 @@ resource "aws_ecs_service" "service" {
   }
 
   load_balancer {
-    target_group_arn = data.terraform_remote_state.platform.outputs.service1_target_group_arn
+    target_group_arn = data.terraform_remote_state.platform.outputs.service2_target_group_arn
     container_name   = var.service_name
     container_port   = var.container_port
   }
