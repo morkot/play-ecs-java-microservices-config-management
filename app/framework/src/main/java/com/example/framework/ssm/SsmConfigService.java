@@ -6,6 +6,7 @@ import org.springframework.core.env.MutablePropertySources;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -63,6 +64,23 @@ public class SsmConfigService {
 
     public int getLastParameterCount() {
         return lastParameterCount;
+    }
+
+    /**
+     * Get all properties loaded from SSM.
+     *
+     * @return map of all SSM properties
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getSsmProperties() {
+        MutablePropertySources propertySources = environment.getPropertySources();
+        if (propertySources.contains(SsmPropertySourceLoader.SSM_PROPERTY_SOURCE_NAME)) {
+            MapPropertySource ssmSource = (MapPropertySource) propertySources.get(SsmPropertySourceLoader.SSM_PROPERTY_SOURCE_NAME);
+            if (ssmSource != null) {
+                return ssmSource.getSource();
+            }
+        }
+        return Collections.emptyMap();
     }
 
     /**

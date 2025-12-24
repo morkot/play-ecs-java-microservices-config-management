@@ -42,7 +42,6 @@ class ConfigController {
         appConfig.put("environment", env.getProperty("app.environment", "local"));
         appConfig.put("version", env.getProperty("app.version", "1.0.0"));
         appConfig.put("featureFlag", env.getProperty("app.feature.flag", "false"));
-        appConfig.put("configSource", env.getProperty("app.config.source", "properties-file"));
 
         if (ssmConfigService.getLastRefreshTime() != null) {
             appConfig.put("lastSsmRefresh", ssmConfigService.getLastRefreshTime().toString());
@@ -77,5 +76,10 @@ class ConfigController {
         health.put("application", env.getProperty("app.name", "ecs-config-demo"));
         health.put("environment", env.getProperty("app.environment", "local"));
         return health;
+    }
+
+    @GetMapping("/api/ssm-properties")
+    public Map<String, Object> getSsmProperties() {
+        return ssmConfigService.getSsmProperties();
     }
 }
