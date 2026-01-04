@@ -1,70 +1,233 @@
-# play-ecs-java-microservices-config-management
-Everything to build and play with centralaised configuration management in ecs and java µservices
+# ECS Java Microservices with Centralized Configuration Management
 
-## Prepare and deploy
+This project demonstrates centralized configuration management for Java microservices running on AWS ECS, using SSM Parameter Store with automatic hot-reload via EventBridge and Lambda.
 
-### Build app and docker image
+![Architecture](architecture.png)
 
-```shell
-cd app/ service-1
+## Architecture
+
+- **2 Spring Boot microservices** running on ECS Fargate
+- **SSM Parameter Store** for centralized configuration
+- **EventBridge** watches for parameter changes
+- **Lambda** triggers config refresh on the affected service
+- **ALB** routes traffic based on path prefix
+
+## SSM Parameter Structure
+
+Each service reads from its own SSM path prefix:
+
+```
+/ecs-config-demo/
+├── service-1/
+│   └── app/
+│       ├── feature/flag
+│       └── environment
+└── service-2/
+    └── app/
+        ├── feature/flag
+        └── environment
+```
+
+Parameters are automatically converted to Spring properties:
+
+| SSM Parameter Name                              | Spring Property Name  |
+|-------------------------------------------------|-----------------------|
+| `/ecs-config-demo/service-1/app/feature/flag`   | `app.feature.flag`    |
+| `/ecs-config-demo/service-1/app/environment`    | `app.environment`     |
+| `/ecs-config-demo/service-2/db/host`            | `db.host`             |
+
+## Prerequisites
+
+- AWS CLI configured
+- Terraform >= 1.0
+- Java 21
+- Maven
+- Docker
+
+## Deploy
+
+### 1. Build Framework and Services
+
+```bash
+# Build shared framework
+cd app/framework
+mvn clean install
+
+# Build services
+cd ../service-1
 mvn clean package -DskipTests
-AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-aws ecr get-login-password | docker login --username AWS --password-stdin $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com
-docker build -t AWS_ACCOUNT.dkr.ecr.eu-west-1.amazonaws.com/service-1 .
 
+cd ../service-2
+mvn clean package -DskipTests
+```
+
+### 2. Push Docker Images
+
+```bash
+export AWS_REGION=eu-west-1
+AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+
+# Login to ECR
+aws ecr get-login-password | docker login --username AWS --password-stdin $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com
+
+# Build and push service-1
+cd app/service-1
+docker build -t $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/service-1 .
+docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/service-1
+
+# Build and push service-2
+cd ../service-2
+docker build -t $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/service-2 .
+docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/service-2
+```
+
+### 3. Deploy Infrastructure
+
+```bash
+# Deploy platform (VPC, ALB, ECS Cluster)
+cd infra/platform
+terraform init && terraform apply
+
+# Deploy services
+cd ../service-1
+terraform init && terraform apply
+
+cd ../service-2
+terraform init && terraform apply
+
+# Deploy Lambda config refresher
+cd ../lambda-config-refresh
+terraform init && terraform apply
+```
+
+### 4. Get ALB Endpoint
+
+```bash
+cd infra/platform
+terraform output alb_endpoint
+```
+
+## Demo: Automatic Configuration Refresh
+
+### Step 1: View Current Configuration
+
+```bash
+ALB=<your-alb-dns>
+
+# View service-1 config
+curl -s http://$ALB/service-1/api/config | jq
+
+# View service-2 config
+curl -s http://$ALB/service-2/api/config | jq
+```
+
+### Step 2: Create SSM Parameters
+
+```bash
+# Create parameters for service-1
 aws ssm put-parameter \
-  --name "/ecs-config-demo/app/feature/flag" \
+  --name "/ecs-config-demo/service-1/app/feature/flag" \
   --value "true" \
   --type String \
   --overwrite
 
-curl -X POST http://ecs-config-demo-alb-136450583.eu-west-1.elb.amazonaws.com/api/config/refresh
+aws ssm put-parameter \
+  --name "/ecs-config-demo/service-1/app/environment" \
+  --value "production" \
+  --type String \
+  --overwrite
+
+# Create parameters for service-2
+aws ssm put-parameter \
+  --name "/ecs-config-demo/service-2/app/feature/flag" \
+  --value "false" \
+  --type String \
+  --overwrite
+
+aws ssm put-parameter \
+  --name "/ecs-config-demo/service-2/app/environment" \
+  --value "staging" \
+  --type String \
+  --overwrite
 ```
 
-About ssm maping to properties:
-```
-Your app config (application.properties):
-  app.config.ssm.path=/ecs-config-demo/
+### Step 3: Watch Automatic Refresh
 
-  Path transformation:
-  SSM Parameter Name                        →  Spring Property Name
-  ─────────────────────────────────────────────────────────────────
-  /ecs-config-demo/app/environment          →  app.environment
-  /ecs-config-demo/app/feature/flag         →  app.feature.flag
-  /ecs-config-demo/db/host                  →  db.host
+Open two terminals:
 
-  The code strips the prefix (/ecs-config-demo/) and converts / to .
+**Terminal 1 - Watch service-1:**
+```bash
+while true; do
+  echo "=== $(date) ==="
+  curl -s http://$ALB/service-1/api/config | jq '.application'
+  sleep 2
+done
 ```
 
-### Deploy platform, services and `lambda-config-refresher`
-
-```shell
-cd infra/platform
-terraform init && terraform apply
-
-cd infra/service-1
-terraform init && terraform apply
-
-cd infra/lambda-config-refresher
-terraform init && terraform apply
+**Terminal 2 - Change a parameter:**
+```bash
+aws ssm put-parameter \
+  --name "/ecs-config-demo/service-1/app/feature/flag" \
+  --value "false" \
+  --type String \
+  --overwrite
 ```
 
-## Demo
+Within a few seconds, Terminal 1 will show the updated value. The flow is:
 
-1. Get service URL
+1. SSM Parameter changes
+2. EventBridge detects the change
+3. Lambda is triggered
+4. Lambda calls `/service-1/api/config/refresh`
+5. Service reloads configuration from SSM
 
-```shell
-cd infra/platform
-terraform output
+### Step 4: View All SSM Properties
+
+```bash
+# See all dynamically loaded SSM properties
+curl -s http://$ALB/service-1/api/ssm-properties | jq
+curl -s http://$ALB/service-2/api/ssm-properties | jq
 ```
 
-2. Demonstrate properties via broser or via curl by going to test_urls.properties
-3. Demonstrate automated refresh:
+### Step 5: Add Custom Properties Dynamically
 
-```shell
-while true; do curl -s http://ecs-config-demo-alb-1058709648.eu-west-1.elb.amazonaws.com/api/config | jq '.application.featureFlag'; sleep 1; done
+```bash
+# Add any custom property - no code change needed!
+aws ssm put-parameter \
+  --name "/ecs-config-demo/service-1/custom/my-setting" \
+  --value "hello-world" \
+  --type String \
+  --overwrite
+
+# Wait a few seconds, then check
+curl -s http://$ALB/service-1/api/ssm-properties | jq
+# Shows: {"custom.my-setting": "hello-world", ...}
 ```
 
-Go to SSM parameter store and change value of `/ecs-config-demo/app/feature/flag`
+## API Endpoints
 
-Switch back to terminal and see new value appear after few seconds.
+| Endpoint | Description |
+|----------|-------------|
+| `GET /service-1/api/config` | View service-1 configuration |
+| `GET /service-2/api/config` | View service-2 configuration |
+| `GET /service-{n}/api/ssm-properties` | View all SSM-loaded properties |
+| `POST /service-{n}/api/config/refresh` | Manually trigger config refresh |
+| `GET /service-{n}/api/health` | Health check |
+
+## Manual Refresh
+
+If needed, you can manually trigger a refresh:
+
+```bash
+curl -X POST http://$ALB/service-1/api/config/refresh | jq
+curl -X POST http://$ALB/service-2/api/config/refresh | jq
+```
+
+## Cleanup
+
+```bash
+cd infra/lambda-config-refresh && terraform destroy
+cd ../service-2 && terraform destroy
+cd ../service-1 && terraform destroy
+cd ../platform && terraform destroy
+```
