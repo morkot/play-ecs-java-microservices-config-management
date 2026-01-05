@@ -2,7 +2,7 @@
 # Copy this file to terraform.tfvars and update with your values
 
 project_name    = "ecs-config-demo"
-environment     = "dev"
+environment     = "prod"
 service_name    = "service-2"
 container_port  = 8081
 container_cpu   = 256
