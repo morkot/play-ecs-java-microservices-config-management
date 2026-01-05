@@ -7,34 +7,66 @@ This project demonstrates centralized configuration management for Java microser
 ## Architecture
 
 - **2 Spring Boot microservices** running on ECS Fargate
-- **SSM Parameter Store** for centralized configuration
+- **SSM Parameter Store** for centralized configuration (Terraform-managed)
 - **EventBridge** watches for parameter changes
 - **Lambda** triggers config refresh on the affected service
 - **ALB** routes traffic based on path prefix
+- **Spring Profiles** for environment-specific configuration
+
+For demonstration purposes:
+
+- **service-1** runs with `dev` profile
+- **service-2** runs with `prod` profile
 
 ## SSM Parameter Structure
 
-Each service reads from its own SSM path prefix:
+Parameters are organized by environment and service:
 
 ```
 /ecs-config-demo/
-├── service-1/
-│   └── app/
-│       ├── feature/flag
-│       └── environment
-└── service-2/
-    └── app/
-        ├── feature/flag
-        └── environment
+├── dev/
+│   ├── service-1/
+│   │   └── app/
+│   │       ├── name
+│   │       ├── version
+│   │       ├── environment
+│   │       ├── feature/flag
+│   │       └── log/level
+│   └── service-2/
+│       └── app/...
+└── prod/
+    ├── service-1/
+    │   └── app/...
+    └── service-2/
+        └── app/...
 ```
 
 Parameters are automatically converted to Spring properties:
 
-| SSM Parameter Name                              | Spring Property Name  |
-|-------------------------------------------------|-----------------------|
-| `/ecs-config-demo/service-1/app/feature/flag`   | `app.feature.flag`    |
-| `/ecs-config-demo/service-1/app/environment`    | `app.environment`     |
-| `/ecs-config-demo/service-2/db/host`            | `db.host`             |
+| SSM Parameter Name                                  | Spring Property Name  |
+|-----------------------------------------------------|-----------------------|
+| `/ecs-config-demo/dev/service-1/app/feature/flag`   | `app.feature.flag`    |
+| `/ecs-config-demo/dev/service-1/app/environment`    | `app.environment`     |
+| `/ecs-config-demo/prod/service-2/app/log/level`     | `app.log.level`       |
+
+## Configuration Management
+
+Parameters are managed via Terraform in `infra/config/`:
+
+```
+infra/config/
+├── main.tf           # Creates all SSM parameters
+├── common/           # Shared parameters (all environments)
+│   └── parameters.tf
+├── dev/              # Dev-specific overrides
+│   └── parameters.tf
+└── prod/             # Prod-specific overrides
+    └── parameters.tf
+```
+
+- **Common parameters** define defaults for all environments
+- **Environment parameters** override common values
+- All environments are applied in a single `terraform apply`
 
 ## Prerequisites
 
@@ -88,6 +120,10 @@ docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/service-2
 cd infra/platform
 terraform init && terraform apply
 
+# Deploy SSM parameters (all environments)
+cd ../config
+terraform init && terraform apply
+
 # Deploy services
 cd ../service-1
 terraform init && terraform apply
@@ -114,41 +150,24 @@ terraform output alb_endpoint
 ```bash
 ALB=<your-alb-dns>
 
-# View service-1 config
+# View service-1 config (dev environment)
 curl -s http://$ALB/service-1/api/config | jq
 
-# View service-2 config
+# View service-2 config (prod environment)
 curl -s http://$ALB/service-2/api/config | jq
 ```
 
-### Step 2: Create SSM Parameters
+Notice the differences:
+
+- **service-1 (dev)**: `feature.flag=true`, `log.level=DEBUG`
+- **service-2 (prod)**: `feature.flag=false`, `log.level=INFO`
+
+### Step 2: View SSM Properties
 
 ```bash
-# Create parameters for service-1
-aws ssm put-parameter \
-  --name "/ecs-config-demo/service-1/app/feature/flag" \
-  --value "true" \
-  --type String \
-  --overwrite
-
-aws ssm put-parameter \
-  --name "/ecs-config-demo/service-1/app/environment" \
-  --value "production" \
-  --type String \
-  --overwrite
-
-# Create parameters for service-2
-aws ssm put-parameter \
-  --name "/ecs-config-demo/service-2/app/feature/flag" \
-  --value "false" \
-  --type String \
-  --overwrite
-
-aws ssm put-parameter \
-  --name "/ecs-config-demo/service-2/app/environment" \
-  --value "staging" \
-  --type String \
-  --overwrite
+# See all SSM properties loaded by each service
+curl -s http://$ALB/service-1/api/ssm-properties | jq
+curl -s http://$ALB/service-2/api/ssm-properties | jq
 ```
 
 ### Step 3: Watch Automatic Refresh
@@ -156,18 +175,20 @@ aws ssm put-parameter \
 Open two terminals:
 
 **Terminal 1 - Watch service-1:**
+
 ```bash
 while true; do
   echo "=== $(date) ==="
-  curl -s http://$ALB/service-1/api/config | jq '.application'
+  curl -s http://$ALB/service-1/api/ssm-properties | jq
   sleep 2
 done
 ```
 
 **Terminal 2 - Change a parameter:**
+
 ```bash
 aws ssm put-parameter \
-  --name "/ecs-config-demo/service-1/app/feature/flag" \
+  --name "/ecs-config-demo/dev/service-1/app/feature/flag" \
   --value "false" \
   --type String \
   --overwrite
@@ -181,27 +202,30 @@ Within a few seconds, Terminal 1 will show the updated value. The flow is:
 4. Lambda calls `/service-1/api/config/refresh`
 5. Service reloads configuration from SSM
 
-### Step 4: View All SSM Properties
-
-```bash
-# See all dynamically loaded SSM properties
-curl -s http://$ALB/service-1/api/ssm-properties | jq
-curl -s http://$ALB/service-2/api/ssm-properties | jq
-```
-
-### Step 5: Add Custom Properties Dynamically
+### Step 4: Add Custom Properties Dynamically
 
 ```bash
 # Add any custom property - no code change needed!
 aws ssm put-parameter \
-  --name "/ecs-config-demo/service-1/custom/my-setting" \
+  --name "/ecs-config-demo/dev/service-1/custom/my-setting" \
   --value "hello-world" \
   --type String \
   --overwrite
 
 # Wait a few seconds, then check
 curl -s http://$ALB/service-1/api/ssm-properties | jq
-# Shows: {"custom.my-setting": "hello-world", ...}
+# Shows: {"custom/my-setting": "hello-world", ...}
+```
+
+### Step 5: Update Configuration via Terraform
+
+For persistent changes, update the Terraform config:
+
+```bash
+# Edit infra/config/dev/parameters.tf to change values
+# Then apply:
+cd infra/config
+terraform apply
 ```
 
 ## API Endpoints
@@ -229,5 +253,6 @@ curl -X POST http://$ALB/service-2/api/config/refresh | jq
 cd infra/lambda-config-refresh && terraform destroy
 cd ../service-2 && terraform destroy
 cd ../service-1 && terraform destroy
+cd ../config && terraform destroy
 cd ../platform && terraform destroy
 ```
