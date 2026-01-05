@@ -12,13 +12,13 @@ logger.setLevel(logging.INFO)
 def extract_service_name(parameter_name):
     """
     Extract service name from SSM parameter path.
-    E.g., /ecs-config-demo/service-1/app/feature/flag -> service-1
+    E.g., /ecs-config-demo/dev/service-1/app/feature/flag -> service-1
     """
     if not parameter_name:
         return None
 
-    # Pattern: /ecs-config-demo/{service-name}/...
-    match = re.match(r'^/ecs-config-demo/(service-\d+)/', parameter_name)
+    # Pattern: /ecs-config-demo/{env}/{service-name}/...
+    match = re.match(r'^/ecs-config-demo/\w+/(service-\d+)/', parameter_name)
     if match:
         return match.group(1)
     return None
