@@ -1,4 +1,4 @@
-# Input variables for SSM parameters module
+// Input variables for SSM parameters module
 
 variable "environment" {
   description = "Environment name (e.g., dev, prod)"

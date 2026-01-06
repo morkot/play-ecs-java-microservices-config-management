@@ -1,4 +1,4 @@
-# Dev environment SSM parameters
+// Dev environment SSM parameters
 
 terraform {
   required_version = ">= 1.0"
@@ -12,12 +12,12 @@ terraform {
 
 provider "aws" {}
 
-# Load common defaults
+// Load common defaults
 module "common" {
   source = "../common"
 }
 
-# Create SSM parameters
+// Create SSM parameters
 module "ssm_params" {
   source = "../modules/ssm-params"
 
@@ -30,7 +30,7 @@ module "ssm_params" {
   env_service_params    = local.env_service_params
 }
 
-# Merge all service params from this directory
+// Merge all service params from this directory
 locals {
   env_service_params = merge(
     local.service_1_params,

@@ -1,5 +1,5 @@
-# Service-2 default parameters
-# These apply to service-2 in ALL environments
+// Service-2 default parameters
+// These apply to service-2 in ALL environments
 
 locals {
   service_2_params = {

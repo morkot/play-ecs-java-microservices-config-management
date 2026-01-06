@@ -1,4 +1,4 @@
-# Outputs for common module
+// Outputs for common module
 
 output "common_params" {
   description = "Common env-wide parameters"
