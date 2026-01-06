@@ -1,6 +1,18 @@
 # ECS Java Microservices with Centralized Configuration Management
 
-This project demonstrates centralized configuration management for Java microservices running on AWS ECS, using SSM Parameter Store with automatic hot-reload via EventBridge and Lambda.
+Managing configuration across multiple microservices quickly becomes painful:
+
+- **Scattered property files** - Each service has its own `application.properties`, making it hard to see or change configuration across services
+- **Redeployment required** - Changing a single property means rebuilding and redeploying the entire service
+- **Environment drift** - Copy-paste errors lead to inconsistent configuration between dev, staging, and prod
+
+This project is POC showing how these problems can be solved with **AWS SSM Parameter Store** and **automatic hot-reload**:
+
+- **Single source of truth** - All configuration in one place, organized by environment and service
+- **Instant updates** - Change a parameter and services reload within seconds, no redeployment needed
+- **Terraform-managed** - Infrastructure-as-code with clear separation of common vs environment-specific settings. We can have predefined hirerachy when
+environment configuration overrides common default values.
+- **Full audit trail** - AWS CloudTrail tracks every parameter change
 
 ![Architecture](architecture.png)
 
