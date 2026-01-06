@@ -67,18 +67,95 @@ Parameters are managed via Terraform in `infra/config/`:
 
 ```
 infra/config/
-├── main.tf           # Creates all SSM parameters
-├── common/           # Shared parameters (all environments)
-│   └── parameters.tf
-├── dev/              # Dev-specific overrides
-│   └── parameters.tf
-└── prod/             # Prod-specific overrides
-    └── parameters.tf
+├── modules/ssm-params/       # Reusable module for SSM creation
+│   ├── main.tf
+│   └── variables.tf
+├── common/                   # Defaults for ALL environments
+│   ├── common.tf            # Env-wide defaults (all services)
+│   ├── service-1.tf         # Service-1 defaults
+│   ├── service-2.tf         # Service-2 defaults
+│   └── outputs.tf
+├── dev/                      # Dev environment (standalone terraform root)
+│   ├── main.tf              # Calls ssm-params module
+│   ├── env.tf               # Dev env-wide params + services list
+│   ├── service-1.tf         # Service-1 dev overrides
+│   └── service-2.tf         # Service-2 dev overrides
+└── prod/                     # Prod environment (standalone terraform root)
+    ├── main.tf
+    ├── env.tf
+    ├── service-1.tf
+    └── service-2.tf
 ```
 
-- **Common parameters** define defaults for all environments
-- **Environment parameters** override common values
-- All environments are applied in a single `terraform apply`
+### Parameter Hierarchy
+
+Parameters are merged with the following priority (later overrides earlier):
+
+| Priority | Source | Example | Description |
+|----------|--------|---------|-------------|
+| 1 (lowest) | `common/common.tf` | `app/log/level = INFO` | Default for all services in all envs |
+| 2 | `common/service-X.tf` | `service-1/app/name = demo` | Default for specific service in all envs |
+| 3 | `{env}/env.tf` | `app/log/level = DEBUG` | Override for all services in this env |
+| 4 (highest) | `{env}/service-X.tf` | `service-1/app/log/level = TRACE` | Override for specific service in this env |
+
+### Adding a New Environment
+
+1. Create environment directory:
+```bash
+mkdir infra/config/staging
+```
+
+2. Copy structure from existing environment:
+```bash
+cp infra/config/dev/*.tf infra/config/staging/
+```
+
+3. Update `staging/env.tf`:
+```hcl
+locals {
+  services = ["service-1", "service-2"]
+
+  env_params = {
+    "app/log/level"    = "INFO"
+    "app/environment"  = "staging"
+  }
+}
+```
+
+4. Update `staging/main.tf` - change environment name:
+```hcl
+module "ssm_params" {
+  source      = "../modules/ssm-params"
+  environment = "staging"  # Change this
+  # ...
+}
+```
+
+5. Deploy:
+```bash
+cd infra/config/staging
+terraform init && terraform apply
+```
+
+### Adding a New Service
+
+1. Add service defaults in `common/service-3.tf`:
+```hcl
+locals {
+  service_3_params = {
+    "service-3/app/name"    = "service-3"
+    "service-3/app/version" = "1.0.0"
+  }
+}
+```
+
+2. Update `common/outputs.tf` to include new service params
+
+3. Add `service-3.tf` to each environment that needs it
+
+4. Add `"service-3"` to `services` list in each env's `env.tf`
+
+5. Add `local.service_3_params` to merge in each env's `main.tf`
 
 ## Prerequisites
 
@@ -88,21 +165,32 @@ infra/config/
 - Maven
 - Docker
 
-## Deploy
+## Quick Start
+
+```bash
+# Build framework, services, Docker images and push to ECR
+./build.sh
+
+# Deploy all infrastructure
+./deploy.sh
+
+# Destroy all resources
+./destroy.sh
+```
+
+**Note:** Ensure `AWS_REGION` is set (defaults to `eu-west-1`) and AWS credentials are configured.
+
+## Manual Deploy
+
+<details>
+<summary>Click to expand manual steps</summary>
 
 ### 1. Build Framework and Services
 
 ```bash
-# Build shared framework
-cd app/framework
-mvn clean install
-
-# Build services
-cd ../service-1
-mvn clean package -DskipTests
-
-cd ../service-2
-mvn clean package -DskipTests
+cd app/framework && mvn clean install
+cd ../service-1 && mvn clean package -DskipTests
+cd ../service-2 && mvn clean package -DskipTests
 ```
 
 ### 2. Push Docker Images
@@ -111,15 +199,12 @@ mvn clean package -DskipTests
 export AWS_REGION=eu-west-1
 AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 
-# Login to ECR
 aws ecr get-login-password | docker login --username AWS --password-stdin $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com
 
-# Build and push service-1
 cd app/service-1
 docker build -t $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/service-1 .
 docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/service-1
 
-# Build and push service-2
 cd ../service-2
 docker build -t $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/service-2 .
 docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/service-2
@@ -128,24 +213,12 @@ docker push $AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/service-2
 ### 3. Deploy Infrastructure
 
 ```bash
-# Deploy platform (VPC, ALB, ECS Cluster)
-cd infra/platform
-terraform init && terraform apply
-
-# Deploy SSM parameters (all environments)
-cd ../config
-terraform init && terraform apply
-
-# Deploy services
-cd ../service-1
-terraform init && terraform apply
-
-cd ../service-2
-terraform init && terraform apply
-
-# Deploy Lambda config refresher
-cd ../lambda-config-refresh
-terraform init && terraform apply
+cd infra/platform && terraform init && terraform apply
+cd ../config/dev && terraform init && terraform apply
+cd ../prod && terraform init && terraform apply
+cd ../../service-1 && terraform init && terraform apply
+cd ../service-2 && terraform init && terraform apply
+cd ../lambda-config-refresh && terraform init && terraform apply
 ```
 
 ### 4. Get ALB Endpoint
@@ -154,6 +227,8 @@ terraform init && terraform apply
 cd infra/platform
 terraform output alb_endpoint
 ```
+
+</details>
 
 ## Demo: Automatic Configuration Refresh
 
@@ -214,29 +289,14 @@ Within a few seconds, Terminal 1 will show the updated value. The flow is:
 4. Lambda calls `/service-1/api/config/refresh`
 5. Service reloads configuration from SSM
 
-### Step 4: Add Custom Properties Dynamically
-
-```bash
-# Add any custom property - no code change needed!
-aws ssm put-parameter \
-  --name "/ecs-config-demo/dev/service-1/custom/my-setting" \
-  --value "hello-world" \
-  --type String \
-  --overwrite
-
-# Wait a few seconds, then check
-curl -s http://$ALB/service-1/api/ssm-properties | jq
-# Shows: {"custom/my-setting": "hello-world", ...}
-```
-
-### Step 5: Update Configuration via Terraform
+### Step 4: Update Configuration via Terraform
 
 For persistent changes, update the Terraform config:
 
 ```bash
-# Edit infra/config/dev/parameters.tf to change values
+# Edit infra/config/dev/env.tf or service files to change values
 # Then apply:
-cd infra/config
+cd infra/config/dev
 terraform apply
 ```
 
@@ -262,9 +322,5 @@ curl -X POST http://$ALB/service-2/api/config/refresh | jq
 ## Cleanup
 
 ```bash
-cd infra/lambda-config-refresh && terraform destroy
-cd ../service-2 && terraform destroy
-cd ../service-1 && terraform destroy
-cd ../config && terraform destroy
-cd ../platform && terraform destroy
+./destroy.sh
 ```
