@@ -41,3 +41,24 @@ resource "aws_iam_role_policy" "lambda_logs" {
     ]
   })
 }
+
+# IAM Policy for Lambda - ECS Permissions
+resource "aws_iam_role_policy" "lambda_ecs" {
+  name = "${var.project_name}-config-refresh-ecs-policy"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:UpdateService",
+          "ecs:DescribeServices",
+          "ecs:ListServices"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}

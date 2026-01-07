@@ -1,6 +1,10 @@
-# Read ALB endpoint from SSM Parameter (created by platform module)
-data "aws_ssm_parameter" "alb_endpoint" {
-  name = "/${var.project_name}/platform/alb-endpoint"
+# Read platform state to get ECS cluster name
+data "terraform_remote_state" "platform" {
+  backend = "local"
+
+  config = {
+    path = "${path.module}/../platform/terraform.tfstate"
+  }
 }
 
 # Archive the Lambda function code
@@ -23,7 +27,8 @@ resource "aws_lambda_function" "config_refresh" {
 
   environment {
     variables = {
-      ALB_ENDPOINT = data.aws_ssm_parameter.alb_endpoint.value
+      ECS_CLUSTER_NAME = data.terraform_remote_state.platform.outputs.cluster_name
+      PROJECT_NAME     = var.project_name
     }
   }
 

@@ -1,12 +1,14 @@
 import json
 import os
-import urllib.request
-import urllib.error
 import logging
 import re
+import boto3
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# Initialize ECS client
+ecs_client = boto3.client('ecs')
 
 
 def extract_service_name(parameter_name):
@@ -24,37 +26,62 @@ def extract_service_name(parameter_name):
     return None
 
 
-def call_refresh_endpoint(alb_endpoint, service_name):
-    """Call the refresh endpoint for a specific service."""
-    refresh_url = f"{alb_endpoint}/{service_name}/api/config/refresh"
-    logger.info(f"Calling refresh endpoint: {refresh_url}")
+def restart_ecs_service(cluster_name, service_name, project_name):
+    """
+    Restart ECS service by forcing a new deployment.
+    This will gracefully stop old tasks and start new ones with fresh configuration.
+    """
+    ecs_service_name = f"{project_name}-{service_name}"
 
-    request = urllib.request.Request(
-        refresh_url,
-        method='POST',
-        headers={'Content-Type': 'application/json'}
-    )
+    logger.info(f"Restarting ECS service: {ecs_service_name} in cluster: {cluster_name}")
 
-    with urllib.request.urlopen(request, timeout=30) as response:
-        response_body = response.read().decode('utf-8')
-        status_code = response.getcode()
-        logger.info(f"Refresh response for {service_name}: status={status_code}, body={response_body}")
-        return status_code, response_body
+    try:
+        # Force new deployment - ECS will gracefully replace tasks
+        response = ecs_client.update_service(
+            cluster=cluster_name,
+            service=ecs_service_name,
+            forceNewDeployment=True
+        )
+
+        logger.info(f"Successfully triggered restart for {ecs_service_name}")
+        logger.info(f"Service status: {response['service']['status']}")
+        logger.info(f"Desired count: {response['service']['desiredCount']}")
+
+        return {
+            'success': True,
+            'service': ecs_service_name,
+            'status': response['service']['status'],
+            'deployments': len(response['service']['deployments'])
+        }
+
+    except ecs_client.exceptions.ServiceNotFoundException:
+        logger.error(f"ECS service not found: {ecs_service_name}")
+        raise Exception(f"ECS service '{ecs_service_name}' not found in cluster '{cluster_name}'")
+
+    except ecs_client.exceptions.ClusterNotFoundException:
+        logger.error(f"ECS cluster not found: {cluster_name}")
+        raise Exception(f"ECS cluster '{cluster_name}' not found")
+
+    except Exception as e:
+        logger.error(f"Error restarting ECS service: {str(e)}")
+        raise
 
 
 def handler(event, context):
     """
-    Lambda handler that triggers config refresh on ECS service
+    Lambda handler that restarts ECS service (forces new deployment)
     when SSM parameters are updated.
     """
     logger.info(f"Received event: {json.dumps(event)}")
 
-    alb_endpoint = os.environ.get('ALB_ENDPOINT')
-    if not alb_endpoint:
-        logger.error("ALB_ENDPOINT environment variable not set")
+    cluster_name = os.environ.get('ECS_CLUSTER_NAME')
+    project_name = os.environ.get('PROJECT_NAME', 'ecs-config-demo')
+
+    if not cluster_name:
+        logger.error("ECS_CLUSTER_NAME environment variable not set")
         return {
             'statusCode': 500,
-            'body': json.dumps({'error': 'ALB_ENDPOINT not configured'})
+            'body': json.dumps({'error': 'ECS_CLUSTER_NAME not configured'})
         }
 
     # Extract SSM parameter details from event
@@ -65,7 +92,7 @@ def handler(event, context):
         operation = event.get('detail', {}).get('operation')
         logger.info(f"SSM Parameter changed: {parameter_name}, Operation: {operation}")
 
-    # Determine which service to refresh based on parameter path
+    # Determine which service to restart based on parameter path
     service_name = extract_service_name(parameter_name)
 
     if not service_name:
@@ -79,47 +106,25 @@ def handler(event, context):
         }
 
     try:
-        status_code, response_body = call_refresh_endpoint(alb_endpoint, service_name)
+        result = restart_ecs_service(cluster_name, service_name, project_name)
 
         return {
-            'statusCode': status_code,
+            'statusCode': 200,
             'body': json.dumps({
-                'message': f'Config refresh triggered for {service_name}',
+                'message': f'ECS service restart triggered for {service_name}',
                 'service': service_name,
                 'parameter_changed': parameter_name,
-                'refresh_response': json.loads(response_body) if response_body else None
-            })
-        }
-
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode('utf-8') if e.fp else str(e)
-        logger.error(f"HTTP error calling refresh endpoint: {e.code} - {error_body}")
-        return {
-            'statusCode': e.code,
-            'body': json.dumps({
-                'error': 'Failed to refresh config',
-                'service': service_name,
-                'details': error_body
-            })
-        }
-
-    except urllib.error.URLError as e:
-        logger.error(f"URL error calling refresh endpoint: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps({
-                'error': 'Failed to connect to refresh endpoint',
-                'service': service_name,
-                'details': str(e.reason)
+                'operation': operation,
+                'restart_result': result
             })
         }
 
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        logger.error(f"Error restarting service: {str(e)}")
         return {
             'statusCode': 500,
             'body': json.dumps({
-                'error': 'Unexpected error',
+                'error': 'Failed to restart ECS service',
                 'service': service_name,
                 'details': str(e)
             })
