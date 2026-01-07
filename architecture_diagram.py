@@ -26,7 +26,7 @@ with Diagram(
         with Cluster("VPC"):
             alb = ALB("ALB\n(Port 80)")
 
-            with Cluster("ECS Cluster"):
+            with Cluster("ECS Cluster") as ecs_cluster:
                 with Cluster("Service-1"):
                     service1 = Fargate("Service-1\n(Java/Spring)\nPort 8080")
 
@@ -36,7 +36,7 @@ with Diagram(
         with Cluster("Configuration Management"):
             ssm = SystemsManager("SSM Parameter\nStore\n/ecs-config-demo/*")
             eventbridge = Eventbridge("EventBridge\n(SSM Change Events)")
-            lambda_fn = Lambda("Config Refresh\nLambda")
+            lambda_fn = Lambda("Service Restart\nLambda")
 
         cloudwatch = Cloudwatch("CloudWatch\nLogs")
 
@@ -49,10 +49,11 @@ with Diagram(
     service1 >> Edge(label="Read Config", style="dashed") >> ssm
     service2 >> Edge(label="Read Config", style="dashed") >> ssm
 
-    # Config refresh flow
+    # Config update flow
     ssm >> Edge(label="Parameter Change", color="orange") >> eventbridge
     eventbridge >> Edge(label="Trigger", color="orange") >> lambda_fn
-    lambda_fn >> Edge(label="POST /api/config/refresh", color="orange") >> alb
+    lambda_fn >> Edge(label="update_service()\nforceNewDeployment", color="orange") >> service1
+    lambda_fn >> Edge(label="update_service()\nforceNewDeployment", color="orange", style="dashed") >> service2
 
     # Logging
     service1 >> Edge(style="dotted", color="gray") >> cloudwatch

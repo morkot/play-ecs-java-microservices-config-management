@@ -6,12 +6,13 @@ Managing configuration across multiple microservices quickly becomes painful:
 - **Redeployment required** - Changing a single property means rebuilding and redeploying the entire service
 - **Environment drift** - Copy-paste errors lead to inconsistent configuration between dev, staging, and prod
 
-This project is POC showing how these problems can be solved with **AWS SSM Parameter Store** and **automatic hot-reload**:
+This project is POC showing how these problems can be solved with **AWS SSM Parameter Store** and **automatic service restart**:
 
 - **Single source of truth** - All configuration in one place, organized by environment and service
-- **Instant updates** - Change a parameter and services reload within seconds, no redeployment needed
-- **Terraform-managed** - Infrastructure-as-code with clear separation of common vs environment-specific settings. We can have predefined hirerachy when
+- **Automatic updates** - Change a parameter and ECS services restart automatically with new configuration
+- **Terraform-managed** - Infrastructure-as-code with clear separation of common vs environment-specific settings. We can have predefined hierarchy when
 environment configuration overrides common default values.
+- **Zero-downtime deployments** - ECS gracefully restarts tasks with rolling updates
 - **Full audit trail** - AWS CloudTrail tracks every parameter change
 
 ![Architecture](architecture.png)
@@ -21,9 +22,21 @@ environment configuration overrides common default values.
 - **2 Spring Boot microservices** running on ECS Fargate
 - **SSM Parameter Store** for centralized configuration (Terraform-managed)
 - **EventBridge** watches for parameter changes
-- **Lambda** triggers config refresh on the affected service
-- **ALB** routes traffic based on path prefix
+- **Lambda** triggers ECS service restart via AWS API (`forceNewDeployment`)
+- **ECS** orchestrates graceful rolling restart of tasks
+- **ALB** routes traffic based on path prefix with zero downtime during restarts
 - **Spring Profiles** for environment-specific configuration
+
+### Why Service Restart?
+
+The solution uses **ECS service restart** instead of runtime refresh because:
+
+- **Works with all Spring patterns** - @Value, @ConfigurationProperties, constructor injection
+- **Fresh application state** - No stale caches, connections, or memory state
+- **Zero-downtime** - ECS handles graceful rolling deployment
+- **Guaranteed consistency** - All configuration loaded from startup, not just environment properties
+
+Runtime refresh (`@RefreshScope`) only works with specific Spring patterns and doesn't reload infrastructure configs like database connections, thread pools, or security settings.
 
 For demonstration purposes:
 
@@ -230,7 +243,7 @@ terraform output alb_endpoint
 
 </details>
 
-## Demo: Automatic Configuration Refresh
+## Demo: Automatic Configuration Update
 
 ### Step 1: View Current Configuration
 
@@ -257,17 +270,17 @@ curl -s http://$ALB/service-1/api/ssm-properties | jq
 curl -s http://$ALB/service-2/api/ssm-properties | jq
 ```
 
-### Step 3: Watch Automatic Refresh
+### Step 3: Watch Automatic Service Restart
 
 Open two terminals:
 
-**Terminal 1 - Watch service-1:**
+**Terminal 1 - Watch service-1 config:**
 
 ```bash
 while true; do
   echo "=== $(date) ==="
-  curl -s http://$ALB/service-1/api/ssm-properties | jq
-  sleep 2
+  curl -s http://$ALB/service-1/api/config | jq '.application.featureFlag'
+  sleep 5
 done
 ```
 
@@ -281,13 +294,27 @@ aws ssm put-parameter \
   --overwrite
 ```
 
-Within a few seconds, Terminal 1 will show the updated value. The flow is:
+Within 30-60 seconds, you'll see the configuration update. The flow is:
 
 1. SSM Parameter changes
 2. EventBridge detects the change
 3. Lambda is triggered
-4. Lambda calls `/service-1/api/config/refresh`
-5. Service reloads configuration from SSM
+4. Lambda calls ECS API: `update_service(forceNewDeployment=True)`
+5. ECS starts new tasks with fresh configuration
+6. ECS waits for new tasks to pass health checks
+7. ECS gracefully stops old tasks
+8. Service now running with updated configuration
+
+**Monitor the ECS deployment:**
+
+```bash
+aws ecs describe-services \
+  --cluster ecs-config-demo-cluster \
+  --services ecs-config-demo-service-1 \
+  --query 'services[0].deployments'
+```
+
+You'll see two deployments during the rollout: PRIMARY (new) and ACTIVE (old).
 
 ### Step 4: Update Configuration via Terraform
 
@@ -307,17 +334,27 @@ terraform apply
 | `GET /service-1/api/config` | View service-1 configuration |
 | `GET /service-2/api/config` | View service-2 configuration |
 | `GET /service-{n}/api/ssm-properties` | View all SSM-loaded properties |
-| `POST /service-{n}/api/config/refresh` | Manually trigger config refresh |
 | `GET /service-{n}/api/health` | Health check |
 
-## Manual Refresh
+## Manual Service Restart
 
-If needed, you can manually trigger a refresh:
+If needed, you can manually trigger a service restart:
 
 ```bash
-curl -X POST http://$ALB/service-1/api/config/refresh | jq
-curl -X POST http://$ALB/service-2/api/config/refresh | jq
+# Restart service-1
+aws ecs update-service \
+  --cluster ecs-config-demo-cluster \
+  --service ecs-config-demo-service-1 \
+  --force-new-deployment
+
+# Restart service-2
+aws ecs update-service \
+  --cluster ecs-config-demo-cluster \
+  --service ecs-config-demo-service-2 \
+  --force-new-deployment
 ```
+
+**Note:** The `/api/config/refresh` endpoint still exists in the code but is not used by the automatic configuration update flow. The ECS restart approach ensures all Spring configuration patterns work correctly.
 
 ## Cleanup
 
