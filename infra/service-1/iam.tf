@@ -26,6 +26,26 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# Policy for SSM Parameter Store access (secrets injection at container start)
+resource "aws_iam_role_policy" "ecs_execution_ssm" {
+  name = "${var.project_name}-${var.service_name}-execution-ssm-policy"
+  role = aws_iam_role.ecs_task_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameters",
+          "ssm:GetParameter"
+        ]
+        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/*/${var.service_name}/jvm/*"
+      }
+    ]
+  })
+}
+
 # ECS Task Role (for application permissions)
 resource "aws_iam_role" "ecs_task" {
   name = "${var.project_name}-${var.service_name}-task-role"

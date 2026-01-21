@@ -2,7 +2,10 @@
 
 output "common_params" {
   description = "Common env-wide parameters"
-  value       = local.common_params
+  value = merge(
+    local.common_params,
+    local.common_jvm_params,
+  )
 }
 
 output "service_params" {

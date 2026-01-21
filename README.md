@@ -21,6 +21,8 @@ environment configuration overrides common default values.
 
 - **2 Spring Boot microservices** running on ECS Fargate
 - **SSM Parameter Store** for centralized configuration (Terraform-managed)
+  - Application properties (`app/*`) loaded by Spring Boot at startup
+  - JVM options (`jvm/opts`) injected via ECS secrets as `JAVA_OPTS`
 - **EventBridge** watches for parameter changes
 - **Lambda** triggers ECS service restart via AWS API (`forceNewDeployment`)
 - **ECS** orchestrates graceful rolling restart of tasks
@@ -51,20 +53,68 @@ Parameters are organized by environment and service:
 /ecs-config-demo/
 ├── dev/
 │   ├── service-1/
-│   │   └── app/
-│   │       ├── name
-│   │       ├── version
-│   │       ├── environment
-│   │       ├── feature/flag
-│   │       └── log/level
+│   │   ├── app/
+│   │   │   ├── name
+│   │   │   ├── version
+│   │   │   ├── environment
+│   │   │   ├── feature/flag
+│   │   │   └── log/level
+│   │   └── jvm/
+│   │       └── opts              # JVM options (e.g., -Xmx384M -XX:+UseG1GC)
 │   └── service-2/
-│       └── app/...
+│       ├── app/...
+│       └── jvm/opts
 └── prod/
     ├── service-1/
-    │   └── app/...
+    │   ├── app/...
+    │   └── jvm/opts
     └── service-2/
-        └── app/...
+        ├── app/...
+        └── jvm/opts
 ```
+
+### JVM Options
+
+JVM options are also managed centrally via SSM Parameter Store:
+
+```
+/ecs-config-demo/
+├── dev/
+│   ├── service-1/
+│   │   ├── app/...
+│   │   └── jvm/
+│   │       └── opts    # JVM arguments as space-separated string
+│   └── service-2/
+│       └── jvm/opts
+└── prod/
+    └── ...
+```
+
+Example JVM options value:
+```
+-XX:+UseG1GC -Xmx384M -XX:MaxGCPauseMillis=100 -XX:+UseStringDeduplication -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:MetaspaceSize=150m -XX:MaxMetaspaceSize=200m
+```
+
+JVM options are injected into containers via the ECS `secrets` block, which fetches the SSM parameter value at container startup and sets it as the `JAVA_OPTS` environment variable. The Docker entrypoint then uses this variable:
+
+```dockerfile
+ENTRYPOINT ["sh", "-c", "exec java ${JAVA_OPTS:-} -jar app.jar"]
+```
+
+When JVM options change in SSM:
+1. EventBridge detects the change
+2. Lambda triggers ECS service restart
+3. New container fetches fresh `JAVA_OPTS` value from SSM
+4. Java process starts with updated JVM settings
+
+JVM options follow the same hierarchy as application parameters - common defaults can be overridden per environment or per service.
+
+**References:**
+- [Java HotSpot VM Options](https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html) - Official Java 21 command-line options
+- [Spring Boot Container Deployment](https://docs.spring.io/spring-boot/reference/packaging/container-images/dockerfiles.html) - Spring Boot Docker best practices
+- [ECS Task Definition Secrets](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-ssm-paramstore.html) - Injecting SSM parameters into containers
+
+### Application Parameters
 
 Parameters are automatically converted to Spring properties:
 
@@ -85,6 +135,7 @@ infra/config/
 │   └── variables.tf
 ├── common/                   # Defaults for ALL environments
 │   ├── common.tf            # Env-wide defaults (all services)
+│   ├── jvm.tf               # JVM options defaults (all services)
 │   ├── service-1.tf         # Service-1 defaults
 │   ├── service-2.tf         # Service-2 defaults
 │   └── outputs.tf

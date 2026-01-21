@@ -33,6 +33,13 @@ resource "aws_ecs_task_definition" "service" {
         }
       ]
 
+      secrets = [
+        {
+          name      = "JAVA_OPTS"
+          valueFrom = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/${var.service_name}/jvm/opts"
+        }
+      ]
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {
