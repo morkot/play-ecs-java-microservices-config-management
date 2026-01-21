@@ -67,11 +67,12 @@ resource "aws_ecs_task_definition" "service" {
 
 # ECS Service
 resource "aws_ecs_service" "service" {
-  name            = "${var.project_name}-${var.service_name}"
-  cluster         = data.terraform_remote_state.platform.outputs.cluster_arn
-  task_definition = aws_ecs_task_definition.service.arn
-  desired_count   = var.desired_count
-  launch_type     = "FARGATE"
+  name                   = "${var.project_name}-${var.service_name}"
+  cluster                = data.terraform_remote_state.platform.outputs.cluster_arn
+  task_definition        = aws_ecs_task_definition.service.arn
+  desired_count          = var.desired_count
+  launch_type            = "FARGATE"
+  enable_execute_command = true
 
   network_configuration {
     subnets          = data.terraform_remote_state.platform.outputs.public_subnet_ids

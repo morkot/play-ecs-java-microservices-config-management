@@ -69,6 +69,28 @@ resource "aws_iam_role" "ecs_task" {
   }
 }
 
+# Policy for ECS Exec (shell access to containers)
+resource "aws_iam_role_policy" "ecs_exec" {
+  name = "${var.project_name}-${var.service_name}-ecs-exec-policy"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # Policy for SSM Parameter Store access
 resource "aws_iam_role_policy" "ssm_access" {
   name = "${var.project_name}-${var.service_name}-ssm-policy"
