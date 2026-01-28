@@ -33,12 +33,21 @@ resource "aws_ecs_task_definition" "service" {
         }
       ]
 
-      secrets = [
+      // Load non-sensitive config from S3 env file
+      environmentFiles = [
         {
-          name      = "JAVA_OPTS"
-          valueFrom = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/${var.service_name}/jvm/opts"
+          value = "arn:aws:s3:::${var.project_name}-${var.environment}-config-${data.aws_caller_identity.current.account_id}/${var.service_name}.env"
+          type  = "s3"
         }
       ]
+
+      // Secrets from SSM (keep for sensitive values like passwords, API keys)
+      // secrets = [
+      //   {
+      //     name      = "DB_PASSWORD"
+      //     valueFrom = "arn:aws:ssm:...parameter/.../db/password"
+      //   }
+      // ]
 
       logConfiguration = {
         logDriver = "awslogs"

@@ -1,4 +1,4 @@
-// Input variables for SSM parameters module
+// Input variables for S3 environment file module
 
 variable "environment" {
   description = "Environment name (e.g., dev, prod)"
@@ -6,7 +6,7 @@ variable "environment" {
 }
 
 variable "project_name" {
-  description = "Project name for SSM path prefix"
+  description = "Project name for bucket naming"
   type        = string
   default     = "ecs-config-demo"
 }
@@ -14,6 +14,11 @@ variable "project_name" {
 variable "services" {
   description = "List of services in this environment"
   type        = list(string)
+}
+
+variable "s3_bucket_id" {
+  description = "S3 bucket ID where env files will be stored"
+  type        = string
 }
 
 variable "common_params" {

@@ -10,10 +10,10 @@ variable "environment" {
   default     = "dev"
 }
 
-variable "ssm_parameter_prefix" {
-  description = "SSM parameter path prefix to monitor for changes"
+variable "config_bucket_name" {
+  description = "S3 bucket name for config files to monitor for changes. If not provided, will be constructed as {project_name}-{environment}-config-{account_id}"
   type        = string
-  default     = "/ecs-config-demo/"
+  default     = ""
 }
 
 variable "lambda_timeout" {

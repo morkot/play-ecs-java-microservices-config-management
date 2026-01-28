@@ -3,7 +3,9 @@
 // Keys should NOT include service prefix
 
 locals {
-  services = ["service-1", "service-2"]
+  project_name = "ecs-config-demo"
+  environment  = "dev"
+  services     = ["service-1", "service-2"]
 
   env_params = {
     "app/log/level"    = "DEBUG"

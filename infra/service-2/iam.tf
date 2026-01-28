@@ -26,9 +26,9 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# Policy for SSM Parameter Store access (secrets injection at container start)
-resource "aws_iam_role_policy" "ecs_execution_ssm" {
-  name = "${var.project_name}-${var.service_name}-execution-ssm-policy"
+# Policy for S3 config bucket access (environmentFiles at container start)
+resource "aws_iam_role_policy" "ecs_execution_s3_config" {
+  name = "${var.project_name}-${var.service_name}-execution-s3-config-policy"
   role = aws_iam_role.ecs_task_execution.id
 
   policy = jsonencode({
@@ -37,10 +37,16 @@ resource "aws_iam_role_policy" "ecs_execution_ssm" {
       {
         Effect = "Allow"
         Action = [
-          "ssm:GetParameters",
-          "ssm:GetParameter"
+          "s3:GetObject"
         ]
-        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/*/${var.service_name}/jvm/*"
+        Resource = "arn:aws:s3:::${var.project_name}-${var.environment}-config-${data.aws_caller_identity.current.account_id}/${var.service_name}.env"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetBucketLocation"
+        ]
+        Resource = "arn:aws:s3:::${var.project_name}-${var.environment}-config-${data.aws_caller_identity.current.account_id}"
       }
     ]
   })
@@ -91,23 +97,3 @@ resource "aws_iam_role_policy" "ecs_exec" {
   })
 }
 
-# Policy for SSM Parameter Store access
-resource "aws_iam_role_policy" "ssm_access" {
-  name = "${var.project_name}-${var.service_name}-ssm-policy"
-  role = aws_iam_role.ecs_task.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "ssm:GetParameter",
-          "ssm:GetParameters",
-          "ssm:GetParametersByPath"
-        ]
-        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/*/${var.service_name}/*"
-      }
-    ]
-  })
-}

@@ -1,4 +1,5 @@
-// Dev environment SSM parameters
+// Dev environment configuration
+// Uses S3 env files for configuration
 
 terraform {
   required_version = ">= 1.0"
@@ -17,12 +18,14 @@ module "common" {
   source = "../common"
 }
 
-// Create SSM parameters
-module "ssm_params" {
-  source = "../modules/ssm-params"
+// Create S3 environment files
+module "s3_env_files" {
+  source = "../modules/s3-env-file"
 
-  environment = "dev"
-  services    = local.services
+  environment  = local.environment
+  project_name = local.project_name
+  services     = local.services
+  s3_bucket_id = aws_s3_bucket.config.id
 
   common_params         = module.common.common_params
   common_service_params = module.common.service_params
@@ -38,11 +41,14 @@ locals {
   )
 }
 
-output "parameters" {
-  value     = module.ssm_params.parameters
-  sensitive = true
+// S3 env file outputs
+output "env_file_arns" {
+  description = "ARNs of the S3 env files"
+  value       = module.s3_env_files.env_file_arns
 }
 
-output "parameter_count" {
-  value = module.ssm_params.parameter_count
+output "env_file_contents" {
+  description = "Contents of the generated .env files (for debugging)"
+  value       = module.s3_env_files.env_file_contents
+  sensitive   = true
 }

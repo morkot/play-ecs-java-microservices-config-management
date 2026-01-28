@@ -1,11 +1,10 @@
-# Example terraform.tfvars for lambda-config-refresh
-# Copy this file to terraform.tfvars and update values if needed
+# terraform.tfvars for lambda-config-refresh
 
-project_name         = "ecs-config-demo"
-environment          = "dev"
-ssm_parameter_prefix = "/ecs-config-demo/"
-lambda_timeout       = 60
-lambda_memory        = 128
+project_name   = "ecs-config-demo"
+environment    = "dev"
+lambda_timeout = 60
+lambda_memory  = 128
 
-# Note: ALB endpoint is automatically read from SSM parameter
-# created by the platform module: /${project_name}/platform/alb-endpoint
+# config_bucket_name is auto-constructed as: {project_name}-{environment}-config-{account_id}
+# Uncomment to override:
+# config_bucket_name = "my-custom-bucket-name"

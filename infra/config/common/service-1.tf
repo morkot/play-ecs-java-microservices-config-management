@@ -5,5 +5,7 @@ locals {
   service_1_params = {
     "service-1/app/name"    = "ecs-config-demo"
     "service-1/app/version" = "1.0.0"
+    "service-1/jvm/opts"    = "-Xmx380M"
+
   }
 }

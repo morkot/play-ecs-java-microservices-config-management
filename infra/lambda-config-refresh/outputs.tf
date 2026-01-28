@@ -14,8 +14,8 @@ output "lambda_role_arn" {
 }
 
 output "eventbridge_rule_arn" {
-  description = "ARN of the EventBridge rule"
-  value       = aws_cloudwatch_event_rule.ssm_parameter_change.arn
+  description = "ARN of the EventBridge rule for S3 config changes"
+  value       = aws_cloudwatch_event_rule.s3_config_change.arn
 }
 
 output "cloudwatch_log_group" {

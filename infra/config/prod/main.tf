@@ -1,4 +1,5 @@
-// Prod environment SSM parameters
+// Prod environment configuration
+// TODO: Add s3-bucket.tf and s3_env_files module when ready to deploy prod
 
 terraform {
   required_version = ">= 1.0"
@@ -12,22 +13,14 @@ terraform {
 
 provider "aws" {}
 
+locals {
+  project_name = "ecs-config-demo"
+  environment  = "prod"
+}
+
 // Load common defaults
 module "common" {
   source = "../common"
-}
-
-// Create SSM parameters
-module "ssm_params" {
-  source = "../modules/ssm-params"
-
-  environment = "prod"
-  services    = local.services
-
-  common_params         = module.common.common_params
-  common_service_params = module.common.service_params
-  env_params            = local.env_params
-  env_service_params    = local.env_service_params
 }
 
 // Merge all service params from this directory
@@ -38,11 +31,17 @@ locals {
   )
 }
 
-output "parameters" {
-  value     = module.ssm_params.parameters
-  sensitive = true
-}
-
-output "parameter_count" {
-  value = module.ssm_params.parameter_count
-}
+// TODO: Uncomment when s3-bucket.tf is added
+// module "s3_env_files" {
+//   source = "../modules/s3-env-file"
+//
+//   environment  = local.environment
+//   project_name = local.project_name
+//   services     = local.services
+//   s3_bucket_id = aws_s3_bucket.config.id
+//
+//   common_params         = module.common.common_params
+//   common_service_params = module.common.service_params
+//   env_params            = local.env_params
+//   env_service_params    = local.env_service_params
+// }
